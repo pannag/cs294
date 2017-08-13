@@ -3,8 +3,10 @@
 """
 Code to load an expert policy generate data and train a model via behavioral cloning.
 Example usage:
-    python train_bc.py expert-data-experts.RoboschoolAnt-v1.pkl \ 
-           --model experts.RoboschoolAnt-v1 --train
+    python train_bc.py expert-data-experts.RoboschoolWalker2d-v1.pkl \
+        --model bc.RoboschoolWalker2d-v1-linear --train
+    python train_bc.py expert-data-experts.RoboschoolHalfCheetah-v1.pkl \
+        --model bc.RoboschoolHalfCheetah-v1-3layer --model_type_mlp --train
 """
 
 
@@ -22,8 +24,10 @@ import pandas as pd
 
 LEARNING_RATE = 0.001
 NUM_ITERATIONS = 1000
+BATCH_SIZE = 1000
 N_HIDDEN_1 = 16
 N_HIDDEN_2 = 16
+N_HIDDEN_3 = 16
 
 
 def chunked(it, size):
@@ -43,8 +47,11 @@ def multilayer_perceptron(x, weights, biases):
     # Hidden layer with RELU activation
     layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])
     layer_2 = tf.nn.relu(layer_2, name='hidden2')
+    # Hidden layer with RELU activation
+    layer_3 = tf.add(tf.matmul(layer_2, weights['h3']), biases['b3'])
+    layer_3 = tf.nn.relu(layer_3, name='hidden3')
     # Output layer with linear activation
-    out_layer = tf.add(tf.matmul(layer_2, weights['out']), biases['out'], name='pred_action')
+    out_layer = tf.add(tf.matmul(layer_3, weights['out']), biases['out'], name='pred_action')
     return out_layer
 
 
@@ -53,11 +60,13 @@ def weights_and_biases(input_size, output_size):
     weights = {
         'h1': tf.Variable(tf.zeros([input_size, N_HIDDEN_1]), name='weights1'),
         'h2': tf.Variable(tf.zeros([N_HIDDEN_1, N_HIDDEN_2]), name='weights2'),
-        'out': tf.Variable(tf.zeros([N_HIDDEN_2, output_size]), name='weights_out')
+        'h3': tf.Variable(tf.zeros([N_HIDDEN_2, N_HIDDEN_3]), name='weights3'),
+        'out': tf.Variable(tf.zeros([N_HIDDEN_3, output_size]), name='weights_out')
     }
     biases = {
         'b1': tf.Variable(tf.zeros([N_HIDDEN_1]), name='biases1'),
         'b2': tf.Variable(tf.zeros([N_HIDDEN_2]), name='biases2'),
+        'b3': tf.Variable(tf.zeros([N_HIDDEN_3]), name='biases3'),
         'out': tf.Variable(tf.zeros([output_size]), name='biases_out')
     }
     return weights, biases
@@ -81,7 +90,9 @@ def setup_graph(input_size, output_size, model_type_mlp=False):
     else:
         pred, weights, biases = linear_model(x, input_size, output_size)
     # Mean squared error
-    cost = tf.reduce_mean(tf.pow(pred-y, 2))
+    diff = pred-y
+    print("Pred: ", pred.get_shape(), " , y: ", y.get_shape(), " , diff: ", diff.get_shape())
+    cost = tf.reduce_mean(tf.pow(diff, 2))
 
     optimizer = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cost)
     if model_type_mlp:
@@ -90,20 +101,41 @@ def setup_graph(input_size, output_size, model_type_mlp=False):
         return {'pred':pred, 'cost': cost, 'train_op':optimizer, 'input':x, 'output':y, 'weights':weights, 'biases':biases}
     
 
-def train(sess, g, input, output, model_name):
+def gen_batches(input, output, batch_size=BATCH_SIZE):
+    """Generates batches of data over the input and outputs. 
+
+       Assumes that the input and output arrays are of same size.
+    """
+    assert len(input) == len(output)
+    n_samples = len(input)
+    p = np.random.permutation(n_samples)
+    shuffled_ip = input[p]
+    shuffled_op = output[p]
+    for i in np.arange(0, n_samples, batch_size):
+        last_index = min(i+batch_size, n_samples)
+        # print(i, ' : ', last_index, " of ", n_samples)
+        yield shuffled_ip[i:last_index], shuffled_op[i:last_index]
+        
+
+
+def train(sess, g, input, output, model_name, batch_size=BATCH_SIZE):
     costs = []
     preds = []
     val_preds = []
     val_costs = []
-    val_size = round((input.shape[0] * 8) / 10)
-    train_input = input[:val_size, :]
-    train_output = output[:val_size, :]
-    val_input = input[val_size:, :]
-    val_output = output[val_size:, :]
+    n_samples = input.shape[0]
+
+    train_size = round((n_samples * 8) / 10)
+    print('Train size : ', train_size, " of ", n_samples)
+    train_input = input[:train_size, :]
+    train_output = output[:train_size, :]
+    val_input = input[train_size:, :]
+    val_output = output[train_size:, :]
     for i in range(NUM_ITERATIONS):
-        pred_, cost_, _, weights_ = sess.run(
-            [g['pred'], g['cost'], g['train_op'], g['weights']], 
-            feed_dict={g['input']:train_input, g['output']:train_output})
+        for input_batch, output_batch in gen_batches(train_input, train_output, batch_size):
+            pred_, cost_, _, weights_ = sess.run(
+                [g['pred'], g['cost'], g['train_op'], g['weights']], 
+                feed_dict={g['input']:input_batch, g['output']:output_batch})
         val_pred_, val_cost_ = sess.run(
             [g['pred'], g['cost']], 
             feed_dict={g['input']:val_input, g['output']:val_output})
@@ -199,7 +231,7 @@ def main():
         num_samples = obs.shape[0]
         print("num_samples = {}, actions_size = {}, obs_size = {}".format(num_samples, actions_size, obs_size))
 
-
+                
     # define the tensorflow graph and train
     if args.train:
         print('Training now..')

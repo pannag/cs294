@@ -4,7 +4,10 @@
 Code to load an expert policy and generate roll-out data for behavioral cloning.
 Example usage:
     python run_expert.py experts/RoboschoolHumanoid-v1.py --render \
-            --num_rollouts 20
+        --num_rollouts 20
+    python run_expert.py experts/RoboschoolWalker2d-v1.py --num_rollouts 20 \
+         --trained_policy bc.RoboschoolWalker2d-v1-linear --render
+
 """
 
 import argparse
