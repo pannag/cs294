@@ -92,7 +92,7 @@ def setup_graph(input_size, output_size, model_type_mlp=False):
     # Mean squared error
     diff = pred-y
     print("Pred: ", pred.get_shape(), " , y: ", y.get_shape(), " , diff: ", diff.get_shape())
-    cost = tf.reduce_mean(tf.pow(diff, 2))
+    cost = tf.reduce_mean(tf.pow(diff, 2)) # + tf.add_n([tf.nn.l2_loss(w) for _,w in weights.items()]) * 0.01
 
     optimizer = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cost)
     if model_type_mlp:
