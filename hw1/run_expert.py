@@ -27,6 +27,8 @@ def main():
                         help='Number of expert roll outs')
     parser.add_argument('--trained_policy', type=str, default=None, 
                         help='Trained policy to use instead of expert policy.')
+    parser.add_argument('--dagger', action='store_true', default=True, 
+                        help='Whether to use dagger. Needs a trained_policy.')
     args = parser.parse_args()
 
     print('loading expert policy')
@@ -47,6 +49,7 @@ def main():
     returns = []
     observations = []
     actions = []
+    expert_actions = []
     for i in range(args.num_rollouts):
         print('iter', i)
         obs = env.reset()
@@ -58,11 +61,14 @@ def main():
                 # obs is shape (I, ). Need to convert to [1, I] before passing into TF
                 action = action_pred.predict_action(input=obs.reshape(-1, obs.shape[0]))
                 action = action.reshape(-1)  # reshape to 1-D array
+                if args.dagger:
+                    expert_action = policy.act(obs)
             else:
                 action = policy.act(obs)
 
             observations.append(obs)
             actions.append(action)
+            expert_actions.append(expert_action)
             obs, r, done, _ = env.step(action)
             totalr += r
             steps += 1
@@ -79,13 +85,22 @@ def main():
     if action_pred is not None:
         action_pred.stop()
 
-    if args.trained_policy is None:
+    if args.trained_policy is None:  # using expert policy to act
         expert_data = {'observations': np.array(observations),
                         'actions': np.array(actions)}
         outfile = 'expert-data-' + module_name + '.pkl'
         print('Ran the expert policy. Saving the training data in ', outfile)
         with open(outfile, 'wb') as f:
             pickle.dump(expert_data, f)
+    if args.dagger:
+        # Save the expert policy data.
+        expert_data = {'observations': np.array(observations),
+                        'actions': np.array(expert_actions)}
+        outfile = 'dagger-' + module_name + '.pkl'
+        print('Storing the expert policy for Dagger. Saving the training data in ', outfile)
+        with open(outfile, 'wb') as f:
+            pickle.dump(expert_data, f)
+
 
 if __name__ == '__main__':
     main()
