@@ -68,7 +68,8 @@ def main():
 
             observations.append(obs)
             actions.append(action)
-            expert_actions.append(expert_action)
+            if args.trained_policy is not None and args.dagger:
+                expert_actions.append(expert_action)
             obs, r, done, _ = env.step(action)
             totalr += r
             steps += 1
@@ -85,6 +86,7 @@ def main():
     if action_pred is not None:
         action_pred.stop()
 
+    # If we are running the expert policy, save the actions for training
     if args.trained_policy is None:  # using expert policy to act
         expert_data = {'observations': np.array(observations),
                         'actions': np.array(actions)}
@@ -92,14 +94,14 @@ def main():
         print('Ran the expert policy. Saving the training data in ', outfile)
         with open(outfile, 'wb') as f:
             pickle.dump(expert_data, f)
-    if args.dagger:
-        # Save the expert policy data.
-        expert_data = {'observations': np.array(observations),
-                        'actions': np.array(expert_actions)}
-        outfile = 'dagger-' + module_name + '.pkl'
-        print('Storing the expert policy for Dagger. Saving the training data in ', outfile)
-        with open(outfile, 'wb') as f:
-            pickle.dump(expert_data, f)
+    # If we are not running expert policy, save the expert actions for Dagger training
+    elif args.dagger:
+            expert_data = {'observations': np.array(observations),
+                            'actions': np.array(expert_actions)}
+            outfile = 'dagger-' + module_name + '.pkl'
+            print('Storing the expert policy for Dagger. Saving the training data in ', outfile)
+            with open(outfile, 'wb') as f:
+                pickle.dump(expert_data, f)
 
 
 if __name__ == '__main__':

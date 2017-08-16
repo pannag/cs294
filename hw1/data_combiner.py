@@ -3,10 +3,9 @@
 """
 Code to load multiple expert policy generated data and combine.
 Example usage:
-    python train_bc.py expert-data-experts.RoboschoolWalker2d-v1.pkl \
-        --model bc.RoboschoolWalker2d-v1-linear --train
-    python train_bc.py expert-data-experts.RoboschoolHalfCheetah-v1.pkl \
-        --model bc.RoboschoolHalfCheetah-v1-3layer --model_type_mlp --train
+python data_combiner.py expert-data-experts.RoboschoolWalker2d-v1.pkl\
+     dagger-experts.RoboschoolWalker2d-v1.pkl --output dagger-1.RoboschoolWalker2d.pkl
+
 """
 
 
@@ -33,11 +32,7 @@ def main():
         actions = expert_data.get('actions')
         all_obs.append(obs)
         all_actions.append(actions)
-
-        obs_size = obs.shape[1]
-        actions_size = actions.shape[1]
-        num_samples = obs.shape[0]
-        print(args.data_filename1, ": num_samples = {}, actions_size = {}, obs_size = {}".format(num_samples, actions_size, obs_size))
+        print(args.data_filename1, "actions = {}, obs = {}".format(actions.shape, obs.shape))
 
     with open(args.data_filename2, 'rb') as f:
         expert_data = pickle.load(f)
@@ -45,22 +40,14 @@ def main():
         actions = expert_data.get('actions')
         all_obs.append(obs)
         all_actions.append(actions)
-
-        obs_size = obs.shape[1]
-        actions_size = actions.shape[1]
-        num_samples = obs.shape[0]
-        print(args.data_filename2, ": num_samples = {}, actions_size = {}, obs_size = {}".format(num_samples, actions_size, obs_size))
+        print(args.data_filename2, "actions = {}, obs = {}".format(actions.shape, obs.shape))
     
     with open(args.output, 'wb') as f:
         print('writing combined expert data')
         out_obs = np.concatenate((all_obs[0], all_obs[1]), axis=0)
         out_actions = np.concatenate((all_actions[0], all_actions[1]), axis=0)
         expert_data = {'observations': out_obs, 'actions': out_actions}
-        obs_size = out_obs.shape[1]
-        actions_size = out_actions.shape[1]
-        num_samples = out_obs.shape[0]
-        print(args.data_filename2, ": num_samples = {}, actions_size = {}, obs_size = {}".format(num_samples, actions_size, obs_size))
-
+        print(args.output, "actions = {}, obs = {}".format(out_actions.shape, out_obs.shape))
         pickle.dump(expert_data, f)
 
 

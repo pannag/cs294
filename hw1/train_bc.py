@@ -23,7 +23,7 @@ import pandas as pd
 
 
 LEARNING_RATE = 0.001
-NUM_ITERATIONS = 1000
+NUM_ITERATIONS = 200
 BATCH_SIZE = 1000
 N_HIDDEN_1 = 16
 N_HIDDEN_2 = 16
@@ -249,25 +249,9 @@ def main():
                 # Test that saved model works as intended
                 pred_ = predict(sess, g, input=obs, model_name=args.model)
                 print('cost:', np.mean(np.square(pred_-actions)))
-            """
-            num = 4
-            plt.figure()
-            xdata = np.array(range(0, num))
-            preds1 = np.array(preds)
-            print(preds1.shape, preds1[:,0:num,0].shape)
-            sns.tsplot(time=xdata, data=preds1[:,0:num,0], color='r', linestyle='-')
-            sns.tsplot(time=xdata, data=preds1[:,0:num,1], color='b', linestyle='--')
-            sns.tsplot(time=xdata, data=preds1[:,0:num,2], color='g', linestyle='-.')
-            sns.tsplot(time=xdata, data=preds1[:,0:num,3], color='k', linestyle=':')
 
-            plt.ylabel('Action', fontsize=25)
-            plt.xlabel('Observation num', fontsize=25, labelpad=-4)
-            plt.title('Robot performance', fontsize=25)
-            plt.legend(loc='bottom left')
-            plt.show()
-            """
-
-    ## Test prediction from saved model on actual output
+    # Test prediction from saved model on an input to get an idea of whether the output is 
+    # in the same range as the actual output.
     print('Predicting on a test input')
     test_input = obs[[-10], :]
     test_output = actions[[-10], :]
