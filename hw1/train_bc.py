@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 
 """
-Code to load an expert policy generate data and train a model via behavioral cloning.
+Code to load an expert policy generate data and train a model via behavioral cloning / dagger.
 Example usage:
     python train_bc.py expert-data-experts.RoboschoolWalker2d-v1.pkl \
-        --model bc.RoboschoolWalker2d-v1-linear --train
+        --model bc.RoboschoolWalker2d-v1-linear --train --plot
     python train_bc.py expert-data-experts.RoboschoolHalfCheetah-v1.pkl \
-        --model bc.RoboschoolHalfCheetah-v1-3layer --model_type_mlp --train
+        --model bc.RoboschoolHalfCheetah-v1-3layer --model_type_mlp --train --plot
+
+Hyperparams are declared as constants at the top of the file.
 """
 
 
@@ -18,25 +20,15 @@ import argparse
 import random
 from scipy import stats
 import matplotlib.pyplot as plt
-#import seaborn as sns
 import pandas as pd
 
 
 LEARNING_RATE = 0.001
-NUM_ITERATIONS = 200
-BATCH_SIZE = 1000
+NUM_ITERATIONS = 500
+BATCH_SIZE = 128 # 64
 N_HIDDEN_1 = 16
 N_HIDDEN_2 = 16
 N_HIDDEN_3 = 16
-
-
-def chunked(it, size):
-    it = iter(it)
-    while True:
-        p = tuple(itertools.islice(it, size))
-        if not p:
-            break
-        yield p
 
 
 # Create model
@@ -58,23 +50,24 @@ def multilayer_perceptron(x, weights, biases):
 def weights_and_biases(input_size, output_size):
     # Store layers weight & bias
     weights = {
-        'h1': tf.Variable(tf.zeros([input_size, N_HIDDEN_1]), name='weights1'),
-        'h2': tf.Variable(tf.zeros([N_HIDDEN_1, N_HIDDEN_2]), name='weights2'),
-        'h3': tf.Variable(tf.zeros([N_HIDDEN_2, N_HIDDEN_3]), name='weights3'),
-        'out': tf.Variable(tf.zeros([N_HIDDEN_3, output_size]), name='weights_out')
+        'h1': tf.Variable(tf.truncated_normal([input_size, N_HIDDEN_1], seed=1), name='weights1'),
+        'h2': tf.Variable(tf.truncated_normal([N_HIDDEN_1, N_HIDDEN_2], seed=2), name='weights2'),
+        'h3': tf.Variable(tf.truncated_normal([N_HIDDEN_2, N_HIDDEN_3], seed=3), name='weights3'),
+        'out': tf.Variable(tf.truncated_normal([N_HIDDEN_3, output_size], seed=4), name='weights_out')
     }
     biases = {
-        'b1': tf.Variable(tf.zeros([N_HIDDEN_1]), name='biases1'),
-        'b2': tf.Variable(tf.zeros([N_HIDDEN_2]), name='biases2'),
-        'b3': tf.Variable(tf.zeros([N_HIDDEN_3]), name='biases3'),
-        'out': tf.Variable(tf.zeros([output_size]), name='biases_out')
+        'b1': tf.Variable(tf.truncated_normal([N_HIDDEN_1], seed=1), name='biases1'),
+        'b2': tf.Variable(tf.truncated_normal([N_HIDDEN_2], seed=2), name='biases2'),
+        'b3': tf.Variable(tf.truncated_normal([N_HIDDEN_3], seed=3), name='biases3'),
+        'out': tf.Variable(tf.truncated_normal([output_size], seed=4), name='biases_out')
     }
     return weights, biases
 
 
 def linear_model(x, input_size, output_size):
-    weights = tf.Variable(tf.zeros([input_size, output_size]), name='weights')
-    biases = tf.Variable(tf.zeros([output_size]), name='biases')
+    weights = tf.Variable(tf.truncated_normal([input_size, output_size], seed=1), name='weights')
+    biases = tf.Variable(tf.truncated_normal([output_size], seed=2), name='biases')
+
     out_layer = tf.add(tf.matmul(x, weights), biases, name='pred_action')
     return out_layer, weights, biases
 
@@ -118,14 +111,20 @@ def gen_batches(input, output, batch_size=BATCH_SIZE):
         
 
 
-def train(sess, g, input, output, model_name, batch_size=BATCH_SIZE):
+def train(sess, g, input, output, model_name, batch_size=BATCH_SIZE, init_ckpt=None, plot=True):
+    saver = None
+    if init_ckpt is not None:
+        saver = tf.train.import_meta_graph(init_ckpt + '.meta')
+        saver.restore(sess, init_ckpt)
+        print("Model restored:", init_ckpt)
+
     costs = []
     preds = []
     val_preds = []
     val_costs = []
     n_samples = input.shape[0]
 
-    train_size = round((n_samples * 8) / 10)
+    train_size = round((n_samples * 9) / 10)
     print('Train size : ', train_size, " of ", n_samples)
     train_input = input[:train_size, :]
     train_output = output[:train_size, :]
@@ -155,23 +154,28 @@ def train(sess, g, input, output, model_name, batch_size=BATCH_SIZE):
     print('Learnt Weights\n', pd.DataFrame(weights_).describe())
     # Save model to disk.
     # Add ops to save and restore all the variables.
-    saver = tf.train.Saver()
-    # output_filename = model_name + '_' + 'model.ckpt' 
+    if saver is None:
+        saver = tf.train.Saver()
     saved_path = saver.save(sess, model_name)
-    print("Model saved:", model_name, ' at ', saved_path)
+    #output_filename = model_name + '.meta' 
+    #tf.train.export_meta_graph(filename=output_filename)
+    print("Model saved:", model_name)
 
     # Plot all results
-    #plt.figure()
-    #plt.plot(list(range(NUM_ITERATIONS)), costs)
-    #plt.plot(list(range(NUM_ITERATIONS)), val_costs, 'r')
-    #plt.legend()
-    #plt.title('Cost vs Iteration num')
-    #plt.show()
+    if plot:
+        plt.figure()
+        plt.plot(list(range(NUM_ITERATIONS)), costs)
+        plt.plot(list(range(NUM_ITERATIONS)), val_costs, 'r')
+        plt.legend(['Training', 'Validation'])
+        plt.title('Cost vs Iteration num')
+        plt.show()
+    print("training done!")
 
 
 def predict(sess, g, input, model_name):
     #saver = tf.train.Saver()
     #output_filename = model_name + '_' + 'model.ckpt' 
+    tf.reset_default_graph()
     saver = tf.train.import_meta_graph(model_name + '.meta')
     saver.restore(sess, model_name)
     print("Model restored:", model_name)
@@ -181,9 +185,9 @@ def predict(sess, g, input, model_name):
 
 def predict_action(input, model_name):
     # define the tensorflow graph
-    tf.reset_default_graph()
 
     with tf.Graph().as_default():
+        #tf.reset_default_graph()
         with tf.Session() as sess:
             saver = tf.train.import_meta_graph(model_name + '.meta')
 
@@ -206,10 +210,14 @@ def predict_action(input, model_name):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('data_filename', type=str)
-    parser.add_argument('--model', type=str)
-    parser.add_argument('--train', action='store_true')
-    parser.add_argument('--model_type_mlp', action='store_true')
+    parser.add_argument('data_filename', type=str, help='data to use for training purpose.')
+    parser.add_argument('--init_ckpt', type=str, default=None, help='Initial checkpoint model.')
+    parser.add_argument('--model', type=str, help='Output file for trained model.')
+    parser.add_argument('--train', action='store_true', help='If False, just runs prediction.')
+    parser.add_argument('--model_type_mlp', action='store_true', default=True, 
+                        help='If False, uses linear model, otherwise MLP.')
+    parser.add_argument('--plot', action='store_true', default=False, 
+                        help='If true, plots the training and validation error against number of epochs')
    
     args = parser.parse_args()
 
@@ -239,16 +247,16 @@ def main():
             g = setup_graph(input_size=obs_size, output_size=actions_size, model_type_mlp=args.model_type_mlp)
             # Initializing the variables
             init = tf.global_variables_initializer()
-            
+
             # Start the session
             with tf.Session() as sess:
                 sess.run(init)
                 # start an epoch
-                train(sess,g,input=obs, output=actions, model_name=args.model)
+                train(sess,g,input=obs, output=actions, model_name=args.model, init_ckpt=args.init_ckpt, plot=args.plot)
 
                 # Test that saved model works as intended
-                pred_ = predict(sess, g, input=obs, model_name=args.model)
-                print('cost:', np.mean(np.square(pred_-actions)))
+                # pred_ = predict(sess, g, input=obs, model_name=args.model)
+                # print('cost:', np.mean(np.square(pred_-actions)))
 
     # Test prediction from saved model on an input to get an idea of whether the output is 
     # in the same range as the actual output.
@@ -258,6 +266,7 @@ def main():
     pred_output = predict_action(input=test_input, model_name=args.model)
     print('Predicted output = ', pred_output)
     print('Actual output = ', test_output)
+
 
 
 if __name__ == '__main__':

@@ -6,7 +6,10 @@ Example usage:
     python run_expert.py experts/RoboschoolHumanoid-v1.py --render \
         --num_rollouts 20
     python run_expert.py experts/RoboschoolWalker2d-v1.py --num_rollouts 20 \
-         --trained_policy bc.RoboschoolWalker2d-v1-linear --render
+         --trained_policy bc.RoboschoolWalker2d-v1-linear --render --dagger
+
+Saves the data from an expert in 'expert-data-experts.' + {module_name} + '-v1.pkl'
+Saves the expert data for dagger iterations in file 'dagger-' + {module_name} + '.pkl'
 
 """
 
