@@ -161,12 +161,12 @@ def train(sess, g, input, output, model_name, batch_size=BATCH_SIZE):
     print("Model saved:", model_name, ' at ', saved_path)
 
     # Plot all results
-    plt.figure()
-    plt.plot(list(range(NUM_ITERATIONS)), costs)
-    plt.plot(list(range(NUM_ITERATIONS)), val_costs, 'r')
+    #plt.figure()
+    #plt.plot(list(range(NUM_ITERATIONS)), costs)
+    #plt.plot(list(range(NUM_ITERATIONS)), val_costs, 'r')
     #plt.legend()
-    plt.title('Cost vs Iteration num')
-    plt.show()
+    #plt.title('Cost vs Iteration num')
+    #plt.show()
 
 
 def predict(sess, g, input, model_name):
