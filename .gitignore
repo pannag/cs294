@@ -3,6 +3,13 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# pkl, index, meta files (ML ckpts)
+*.pkl
+*.index
+*.meta
+*.data*
+*.dat
+
 # C extensions
 *.so
 
