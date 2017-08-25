@@ -21,18 +21,20 @@ import random
 from scipy import stats
 import matplotlib.pyplot as plt
 import pandas as pd
+import tensorflow.contrib.slim as slim
 
 
-LEARNING_RATE = 0.001
-NUM_ITERATIONS = 500
-BATCH_SIZE = 128 # 64
-N_HIDDEN_1 = 16
-N_HIDDEN_2 = 16
+LEARNING_RATE = 0.005 # 0.001
+# How many times to go over the whole data
+NUM_EPOCHS = 200
+BATCH_SIZE = 64
+N_HIDDEN_1 = 512
+N_HIDDEN_2 = 512
 N_HIDDEN_3 = 16
 
 
 # Create model
-def multilayer_perceptron(x, weights, biases):
+def multilayer_perceptron(x, weights, biases, output_size):
     # Hidden layer with RELU activation
     layer_1 = tf.add(tf.matmul(x, weights['h1']), biases['b1'])
     layer_1 = tf.nn.relu(layer_1, name='hidden1')
@@ -44,22 +46,24 @@ def multilayer_perceptron(x, weights, biases):
     layer_3 = tf.nn.relu(layer_3, name='hidden3')
     # Output layer with linear activation
     out_layer = tf.add(tf.matmul(layer_3, weights['out']), biases['out'], name='pred_action')
+
     return out_layer
 
 
 def weights_and_biases(input_size, output_size):
     # Store layers weight & bias
+    # Very important to use truncated_normal with stddev ~0.01. Else it will blow up.
     weights = {
-        'h1': tf.Variable(tf.truncated_normal([input_size, N_HIDDEN_1], seed=1), name='weights1'),
-        'h2': tf.Variable(tf.truncated_normal([N_HIDDEN_1, N_HIDDEN_2], seed=2), name='weights2'),
-        'h3': tf.Variable(tf.truncated_normal([N_HIDDEN_2, N_HIDDEN_3], seed=3), name='weights3'),
-        'out': tf.Variable(tf.truncated_normal([N_HIDDEN_3, output_size], seed=4), name='weights_out')
+        'h1': tf.Variable(tf.truncated_normal([input_size, N_HIDDEN_1], seed=1, stddev=0.01), name='weights1'),
+        'h2': tf.Variable(tf.truncated_normal([N_HIDDEN_1, N_HIDDEN_2], seed=2, stddev=0.01), name='weights2'),
+        'h3': tf.Variable(tf.truncated_normal([N_HIDDEN_2, N_HIDDEN_3], seed=3, stddev=0.01), name='weights3'),
+        'out': tf.Variable(tf.truncated_normal([N_HIDDEN_3, output_size], seed=4, stddev=0.01), name='weights_out')
     }
     biases = {
-        'b1': tf.Variable(tf.truncated_normal([N_HIDDEN_1], seed=1), name='biases1'),
-        'b2': tf.Variable(tf.truncated_normal([N_HIDDEN_2], seed=2), name='biases2'),
-        'b3': tf.Variable(tf.truncated_normal([N_HIDDEN_3], seed=3), name='biases3'),
-        'out': tf.Variable(tf.truncated_normal([output_size], seed=4), name='biases_out')
+        'b1': tf.Variable(tf.zeros([N_HIDDEN_1,]), name='biases1'),
+        'b2': tf.Variable(tf.zeros([N_HIDDEN_2,]), name='biases2'),
+        'b3': tf.Variable(tf.zeros([N_HIDDEN_3,]), name='biases3'),
+        'out': tf.Variable(tf.zeros([output_size,]), name='biases_out')
     }
     return weights, biases
 
@@ -79,13 +83,14 @@ def setup_graph(input_size, output_size, model_type_mlp=False):
     # Construct a MLP
     if model_type_mlp:
         weights, biases = weights_and_biases(input_size, output_size)
-        pred = multilayer_perceptron(x, weights, biases)
+        pred = multilayer_perceptron(x, weights, biases, output_size)
     else:
         pred, weights, biases = linear_model(x, input_size, output_size)
     # Mean squared error
     diff = pred-y
     print("Pred: ", pred.get_shape(), " , y: ", y.get_shape(), " , diff: ", diff.get_shape())
-    cost = tf.reduce_mean(tf.pow(diff, 2)) # + tf.add_n([tf.nn.l2_loss(w) for _,w in weights.items()]) * 0.01
+    # cost = tf.reduce_mean(tf.pow(diff, 2)) # + tf.add_n([tf.nn.l2_loss(w) for _,w in weights.items()]) * 0.01
+    cost = tf.losses.mean_squared_error(pred, y)
 
     optimizer = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cost)
     if model_type_mlp:
@@ -111,7 +116,7 @@ def gen_batches(input, output, batch_size=BATCH_SIZE):
         
 
 
-def train(sess, g, input, output, model_name, batch_size=BATCH_SIZE, init_ckpt=None, plot=True):
+def train(sess, g, input, output, model_name, batch_size=BATCH_SIZE, init_ckpt=None, plot=True, verbose=False):
     saver = None
     if init_ckpt is not None:
         saver = tf.train.import_meta_graph(init_ckpt + '.meta')
@@ -130,7 +135,7 @@ def train(sess, g, input, output, model_name, batch_size=BATCH_SIZE, init_ckpt=N
     train_output = output[:train_size, :]
     val_input = input[train_size:, :]
     val_output = output[train_size:, :]
-    for i in range(NUM_ITERATIONS):
+    for i in range(NUM_EPOCHS):
         for input_batch, output_batch in gen_batches(train_input, train_output, batch_size):
             pred_, cost_, _, weights_ = sess.run(
                 [g['pred'], g['cost'], g['train_op'], g['weights']], 
@@ -143,15 +148,16 @@ def train(sess, g, input, output, model_name, batch_size=BATCH_SIZE, init_ckpt=N
         preds.append(pred_)
         val_preds.append(val_pred_)
         val_costs.append(val_cost_)
-        if i % 10 == 0:
-            print("Iteration", i, "Train Cost", cost_, "Val Cost", val_cost_)
+        if i % (NUM_EPOCHS/10) == 0:
+            print("Epoch", i, "Train Cost", cost_, "Val Cost", val_cost_)
     print("pred_ shape", pred_.shape)
-    print('Train Input stats\n', pd.DataFrame(train_input).describe())
-    print('Preds stats\n', pd.DataFrame(pred_).describe())
-    print('Output stats\n', pd.DataFrame(train_output).describe())
-    print('Val Preds stats\n', pd.DataFrame(val_pred_).describe())
-    print('Val Output stats\n', pd.DataFrame(train_output).describe())
-    print('Learnt Weights\n', pd.DataFrame(weights_).describe())
+    if verbose:
+        print('Train Input stats\n', pd.DataFrame(train_input).describe())
+        print('Preds stats\n', pd.DataFrame(pred_).describe())
+        print('Output stats\n', pd.DataFrame(train_output).describe())
+        print('Val Preds stats\n', pd.DataFrame(val_pred_).describe())
+        print('Val Output stats\n', pd.DataFrame(train_output).describe())
+        print('Learnt Weights\n', pd.DataFrame(weights_).describe())
     # Save model to disk.
     # Add ops to save and restore all the variables.
     if saver is None:
@@ -164,8 +170,8 @@ def train(sess, g, input, output, model_name, batch_size=BATCH_SIZE, init_ckpt=N
     # Plot all results
     if plot:
         plt.figure()
-        plt.plot(list(range(NUM_ITERATIONS)), costs)
-        plt.plot(list(range(NUM_ITERATIONS)), val_costs, 'r')
+        plt.plot(list(range(NUM_EPOCHS)), costs)
+        plt.plot(list(range(NUM_EPOCHS)), val_costs, 'r')
         plt.legend(['Training', 'Validation'])
         plt.title('Cost vs Iteration num')
         plt.show()

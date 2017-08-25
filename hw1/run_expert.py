@@ -59,6 +59,7 @@ def main():
         done = False
         totalr = 0.
         steps = 0
+        print("Obs shape =", obs.shape)
         while not done:
             if args.trained_policy is not None:
                 # obs is shape (I, ). Need to convert to [1, I] before passing into TF
